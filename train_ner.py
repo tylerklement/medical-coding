@@ -93,6 +93,8 @@ def parse_args() -> argparse.Namespace:
     # fp16 only makes sense on CUDA — MPS doesn't support it
     p.add_argument("--fp16", action="store_true", default=False,
                    help="Enable fp16 mixed precision (CUDA only — do NOT set on M1/MPS).")
+    p.add_argument("--num_workers", type=int, default=0,
+                   help="DataLoader workers. 0=safe on Mac/Windows. 2-4 fine on Linux/Colab.")
     p.add_argument("--no_wandb", action="store_true")
     p.add_argument("--max_train_samples", type=int, default=None,
                    help="Cap training to this many articles (by unique ID). "
@@ -265,7 +267,8 @@ def main():
         seed=args.seed,
         logging_steps=50,
         # Mac: fork-based multiprocessing causes PyTorch hangs → keep at 0
-        dataloader_num_workers=0,
+        # On Linux/Colab: pass --num_workers 2 for a small throughput boost
+        dataloader_num_workers=args.num_workers,
         dataloader_pin_memory=device == "cuda",  # pin_memory only helps CUDA
         report_to="none" if args.no_wandb else "wandb",
     )
