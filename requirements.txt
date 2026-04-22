@@ -1,0 +1,32 @@
+# ── Core NLP / ML ──────────────────────────────────────────────────────────────
+torch>=2.1.0
+transformers>=4.40.0
+datasets>=2.19.0
+tokenizers>=0.19.0
+accelerate>=0.29.0
+peft>=0.10.0                 # optional: LoRA fine-tuning
+
+# ── Token Classification / Evaluation ─────────────────────────────────────────
+seqeval>=1.2.2               # entity-level NER metrics
+evaluate>=0.4.1
+
+# ── Sentence Embeddings & Retrieval ───────────────────────────────────────────
+sentence-transformers>=2.7.0
+faiss-cpu>=1.8.0             # swap to faiss-gpu if you have CUDA
+scikit-learn>=1.4.0
+
+# ── Data / Utilities ──────────────────────────────────────────────────────────
+pandas>=2.2.0
+numpy>=1.26.0
+tqdm>=4.66.0
+requests>=2.31.0
+
+# ── Notebook / Visualization ──────────────────────────────────────────────────
+jupyter>=1.0.0
+ipywidgets>=8.1.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+plotly>=5.20.0
+
+# ── Experiment Tracking (optional) ────────────────────────────────────────────
+wandb>=0.17.0
