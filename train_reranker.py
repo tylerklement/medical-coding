@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--icd10cm_json",  default="data/icd10cm_descriptions.json")
     p.add_argument("--icd10pcs_json", default="data/icd10pcs_descriptions.json")
     p.add_argument("--bi_encoder",    default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-    p.add_argument("--cross_encoder", default="cross-encoder/ms-marco-MiniLM-L-6-v2")
+    p.add_argument("--cross_encoder", default="cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
     p.add_argument("--output_dir",    default="models/reranker/")
     p.add_argument("--epochs",           type=int,   default=3)
     p.add_argument("--batch_size",       type=int,   default=16)

@@ -35,7 +35,9 @@ from sentence_transformers import SentenceTransformer, CrossEncoder
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 BI_ENCODER_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+# Multilingual cross-encoder — handles Spanish input paired with English ICD-10 descriptions.
+# Replaces the English-only ms-marco model which scored Spanish/English pairs poorly.
+CROSS_ENCODER_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 
 # ICD-10-CM descriptions bundled with this repo (downloaded separately or from CMS)
 ICD10_CM_DESC_FILE = "data/icd10cm_descriptions.json"   # {code: description}
