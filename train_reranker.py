@@ -4,23 +4,17 @@ train_reranker.py — Fine-tune a cross-encoder for ICD-10 code reranking.
 
 The cross-encoder learns to score (span_text, icd10_description) pairs.
 Training data is constructed from CodiEsp annotations:
-  - Positive pairs: (span_text, gold_code_description) → label 1
-  - Negative pairs: (span_text, hard_negative_description) → label 0
+  - Positive pairs: (span_text, gold_code_description) -> label 1
+  - Negative pairs: (span_text, hard_negative_description) -> label 0
     Hard negatives come from the bi-encoder's top-K candidates that are NOT the gold code.
 
 Usage:
-    python train_reranker.py \
-        --train_tsv data/train/train_annotations.tsv \
-        --train_text data/train/text/ \
-        --icd10cm_json data/icd10cm_descriptions.json \
-        --icd10pcs_json data/icd10pcs_descriptions.json \
-        --output_dir models/reranker/ \
-        --epochs 3 \
-        --batch_size 16
+    python train_reranker.py --no_wandb          # all paths auto-detected
 """
 
 import argparse
 import json
+import os
 import random
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -31,7 +25,7 @@ from sentence_transformers import SentenceTransformer, CrossEncoder, InputExampl
 from sentence_transformers.cross_encoder.evaluation import CEBinaryClassificationEvaluator
 from torch.utils.data import DataLoader
 
-from src.data_loader import load_annotations, load_text
+from src.data_loader import load_annotations, load_text, resolve_tsv
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,15 +36,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dev_tsv", default=None,
                    help="CodiEsp-X dev TSV; auto-detected if omitted")
     p.add_argument("--dev_text", default="data/dev/")
-    p.add_argument("--icd10cm_json", default="data/icd10cm_descriptions.json")
+    p.add_argument("--icd10cm_json",  default="data/icd10cm_descriptions.json")
     p.add_argument("--icd10pcs_json", default="data/icd10pcs_descriptions.json")
-    p.add_argument("--bi_encoder", default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    p.add_argument("--bi_encoder",    default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     p.add_argument("--cross_encoder", default="cross-encoder/ms-marco-MiniLM-L-6-v2")
-    p.add_argument("--output_dir", default="models/reranker/")
-    p.add_argument("--epochs", type=int, default=3)
-    p.add_argument("--batch_size", type=int, default=16)
-    p.add_argument("--negatives_per_pos", type=int, default=4)
-    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--output_dir",    default="models/reranker/")
+    p.add_argument("--epochs",           type=int,   default=3)
+    p.add_argument("--batch_size",       type=int,   default=16)
+    p.add_argument("--negatives_per_pos",type=int,   default=4)
+    p.add_argument("--seed",             type=int,   default=42)
+    p.add_argument("--no_wandb",   action="store_true")
     return p.parse_args()
 
 
@@ -118,26 +113,35 @@ def main():
     random.seed(args.seed)
     np.random.seed(args.seed)
 
+    if args.no_wandb:
+        os.environ["WANDB_DISABLED"] = "true"
+
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    print("Loading ICD-10 descriptions …")
-    cm_descs = load_icd10_descs(args.icd10cm_json)
+    # Auto-resolve TSV paths
+    train_tsv = args.train_tsv or str(resolve_tsv("data", "train", task="X"))
+    dev_tsv   = args.dev_tsv   or str(resolve_tsv("data", "dev",   task="X"))
+    print(f"Train TSV : {train_tsv}")
+    print(f"Dev   TSV : {dev_tsv}")
+
+    print("Loading ICD-10 descriptions ...")
+    cm_descs  = load_icd10_descs(args.icd10cm_json)
     pcs_descs = load_icd10_descs(args.icd10pcs_json)
 
     print("Loading bi-encoder for hard-negative mining …")
     bi_encoder = SentenceTransformer(args.bi_encoder)
 
-    print("Building training pairs …")
+    print("Building training pairs ...")
     train_examples = build_training_pairs(
-        args.train_tsv, args.train_text,
+        train_tsv, args.train_text,
         cm_descs, pcs_descs, bi_encoder,
         negatives_per_pos=args.negatives_per_pos,
     )
     print(f"  {len(train_examples)} training pairs")
 
-    print("Building dev pairs …")
+    print("Building dev pairs ...")
     dev_examples = build_training_pairs(
-        args.dev_tsv, args.dev_text,
+        dev_tsv, args.dev_text,
         cm_descs, pcs_descs, bi_encoder,
         negatives_per_pos=args.negatives_per_pos,
     )
