@@ -165,13 +165,19 @@ class NERPredictor:
                 span_start = char_pos
                 span_chars = [char_pos]
                 confs = [conf]
-                # Greedily extend with I- tokens
+                # Greedily extend with I- tokens OR adjacent B- tokens of the same
+                # type (subword tokenization can produce B B B I I instead of B I I I)
                 j = i + 1
                 while j < len(chars):
                     next_pos = chars[j]
                     next_label_id, next_conf = char_labels[next_pos]
                     next_label = ID2LABEL.get(next_label_id, "O")
-                    if next_label == f"I-{entity_type}":
+                    is_continuation = next_label == f"I-{entity_type}"
+                    is_adjacent_b   = (
+                        next_label == f"B-{entity_type}"
+                        and next_pos == span_chars[-1] + 1
+                    )
+                    if is_continuation or is_adjacent_b:
                         span_chars.append(next_pos)
                         confs.append(next_conf)
                         j += 1
