@@ -109,35 +109,39 @@ class MedicalCodingPipeline:
         if not spans:
             return []
 
-        # ── Stage 2: Code mapping ─────────────────────────────────────────────
-        results = []
+        # ── Stage 2: Batch code mapping ───────────────────────────────────────
+        # Build span dicts with surrounding context for every span at once,
+        # then make a single map_batch() call (one bi-encoder + one cross-encoder
+        # GPU call for all spans in the document).
+        span_dicts = []
         for span in spans:
-            # Extract surrounding context (up to 100 chars each side)
             ctx_start = max(0, span.start - 100)
-            ctx_end = min(len(text), span.end + 100)
-            context = text[ctx_start:ctx_end]
+            ctx_end   = min(len(text), span.end + 100)
+            span_dicts.append({
+                "text":        span.text,
+                "entity_type": span.entity_type,
+                "context":     text[ctx_start:ctx_end],
+            })
 
-            preds = self._code_mapper.map_span(
-                span_text=span.text,
-                entity_type=span.entity_type,
-                context=context,
-                return_top_k=self.top_k_codes,
-            )
+        batch_results = self._code_mapper.map_batch(
+            span_dicts, return_top_k=self.top_k_codes
+        )
 
+        results = []
+        for span, br in zip(spans, batch_results):
+            preds    = br.get("predictions", [])
             top_pred = preds[0] if preds else {"code": "UNKNOWN", "description": "", "score": 0.0}
-            results.append(
-                {
-                    "span_text": span.text,
-                    "entity_type": span.entity_type,
-                    "start": span.start,
-                    "end": span.end,
-                    "confidence": round(span.confidence, 4),
-                    "icd10_code": top_pred["code"],
-                    "code_description": top_pred["description"],
-                    "code_score": top_pred["score"],
-                    "all_candidates": preds,
-                }
-            )
+            results.append({
+                "span_text":        span.text,
+                "entity_type":      span.entity_type,
+                "start":            span.start,
+                "end":              span.end,
+                "confidence":       round(span.confidence, 4),
+                "icd10_code":       top_pred["code"],
+                "code_description": top_pred["description"],
+                "code_score":       top_pred["score"],
+                "all_candidates":   preds,
+            })
 
         return results
 

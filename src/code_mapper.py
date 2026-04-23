@@ -271,14 +271,79 @@ class CodeMapper:
         spans: List[Dict],  # [{"text": ..., "entity_type": ..., "context": ...}]
         return_top_k: int = 1,
     ) -> List[Dict]:
-        """Batch-map a list of spans. Each input dict gets a 'predictions' key."""
+        """
+        Batch-map a list of spans to ICD-10 codes.
+
+        Key optimizations vs calling map_span() per span in a loop:
+          1. All span texts are encoded by the bi-encoder in ONE batched call.
+          2. All (span, candidate_description) pairs are scored by the
+             cross-encoder in ONE batched call.
+
+        This cuts GPU round-trips from O(spans) to O(1) per document.
+        """
+        if not spans:
+            return []
+
+        # Build query strings (span text + optional context)
+        queries = [
+            f"{s['text']}. {s['context']}" if s.get("context") else s["text"]
+            for s in spans
+        ]
+
+        # Step 1: Encode ALL queries in one bi-encoder call
+        query_embs = self.bi_encoder.encode(
+            queries,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+            batch_size=64,
+            show_progress_bar=False,
+        ).astype(np.float32)
+
+        # Step 2: FAISS retrieval for each span (very fast, CPU)
+        all_candidates: List[List[Tuple[str, str, float]]] = []
+        for i, span in enumerate(spans):
+            index = self._cm_index  if span["entity_type"] == "DIAG" else self._pcs_index
+            codes = self._cm_codes  if span["entity_type"] == "DIAG" else self._pcs_codes
+            descs = self._cm_descs  if span["entity_type"] == "DIAG" else self._pcs_descs
+
+            scores, indices = index.search(query_embs[i : i + 1], self.top_k)
+            candidates = [
+                (codes[idx], descs[idx], float(score))
+                for score, idx in zip(scores[0], indices[0])
+                if idx >= 0
+            ]
+            all_candidates.append(candidates)
+
+        # Step 3: Flatten ALL (query, description) pairs into one list
+        pair_list: List[Tuple[str, str]] = []
+        pair_map:  List[Tuple[int, int]] = []   # (span_idx, cand_idx)
+        for span_idx, (query, candidates) in enumerate(zip(queries, all_candidates)):
+            for cand_idx, (_, desc, _) in enumerate(candidates):
+                pair_list.append((query, desc))
+                pair_map.append((span_idx, cand_idx))
+
+        # Step 4: Score ALL pairs in one cross-encoder call
+        cross_scores_flat = (
+            self.cross_encoder.predict(pair_list, batch_size=128, show_progress_bar=False)
+            if pair_list else []
+        )
+
+        # Step 5: Scatter scores back by span and rerank
+        span_cand_scores: List[List[Tuple[int, float]]] = [[] for _ in spans]
+        for flat_idx, (span_idx, cand_idx) in enumerate(pair_map):
+            span_cand_scores[span_idx].append((cand_idx, float(cross_scores_flat[flat_idx])))
+
         results = []
-        for span in spans:
-            preds = self.map_span(
-                span_text=span["text"],
-                entity_type=span["entity_type"],
-                context=span.get("context"),
-                return_top_k=return_top_k,
+        for span, candidates, cand_scores in zip(spans, all_candidates, span_cand_scores):
+            reranked = sorted(
+                [(candidates[ci][0], candidates[ci][1], cs) for ci, cs in cand_scores],
+                key=lambda x: x[2],
+                reverse=True,
             )
+            preds = [
+                {"code": code, "description": desc, "score": round(cs, 4)}
+                for code, desc, cs in reranked[:return_top_k]
+            ]
             results.append({**span, "predictions": preds})
+
         return results
