@@ -154,6 +154,9 @@ class MedicalCodingPipeline:
         """
         Format results in CodiEsp-X submission format (TSV):
             articleID  label  ICD10-code  text-reference  reference-position
+
+        Note: CodiEsp uses lowercase codes (e.g. 'i10', 'bw03zzz') — we
+        normalise here so predictions match the gold-label format.
         """
         lines = []
         for r in results:
@@ -162,9 +165,10 @@ class MedicalCodingPipeline:
                 "\t".join([
                     article_id,
                     label,
-                    r["icd10_code"],
+                    r["icd10_code"].lower(),   # CodiEsp uses lowercase codes
                     r["span_text"],
                     f"{r['start']} {r['end']}",
                 ])
             )
         return "\n".join(lines)
+
