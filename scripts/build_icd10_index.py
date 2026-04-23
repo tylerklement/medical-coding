@@ -17,8 +17,6 @@ def build_custom_codiesp_index():
 
     for split in ["train", "dev"]:
         for ftype in ["X", "D", "P"]:
-            path = DATA_DIR / split / ff"codiesp_{ftype}_{split}.tsv"
-            # actually files are trainX.tsv etc
             path = DATA_DIR / split / f"{split}{ftype}.tsv"
             if not path.exists(): continue
             
