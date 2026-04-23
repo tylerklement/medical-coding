@@ -76,11 +76,15 @@ def build_training_pairs(
 
     for ann in anns:
         descs = cm_descs if ann.bio_type == "DIAG" else pcs_descs
-        gold_desc = descs.get(ann.icd10_code)
+        # CodiEsp stores codes lowercase (r52, bw03zzz); CMS index is uppercase
+        code_upper = ann.icd10_code.upper()
+        gold_desc = descs.get(code_upper)
         if not gold_desc:
             continue
 
         span_text = ann.text_reference
+        if not span_text:
+            continue
 
         # Positive example
         all_examples.append(InputExample(texts=[span_text, gold_desc], label=1.0))
