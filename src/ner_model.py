@@ -77,7 +77,8 @@ class NERPredictor:
         tokenizer: PreTrainedTokenizerFast,
         max_length: int = 512,
         stride: int = 256,      # EDA: median span=2 words, 256 stride is safe
-        threshold: float = 0.4, # EDA: long-tail codes → favour recall over precision
+        threshold: float = 0.55, # raised from 0.4 — 0.4 caused single-char FPs at inference
+        min_span_chars: int = 3, # minimum characters for a valid span; filters e.g. "a", "c"
         device: Optional[str] = None,
     ):
         self.model = model
@@ -85,6 +86,7 @@ class NERPredictor:
         self.max_length = max_length
         self.stride = stride
         self.threshold = threshold
+        self.min_span_chars = min_span_chars
         self.device = device or next(model.parameters()).device
 
     @torch.no_grad()
@@ -180,7 +182,7 @@ class NERPredictor:
                 span_text = text[span_start:span_end].strip()
                 mean_conf = sum(confs) / len(confs)
 
-                if span_text and mean_conf >= self.threshold:
+                if span_text and mean_conf >= self.threshold and len(span_text) >= self.min_span_chars:
                     spans.append(
                         MedicalSpan(
                             text=span_text,
