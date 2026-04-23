@@ -93,8 +93,8 @@ def build_training_pairs(
     all_examples: List[InputExample] = []
 
     for ann in anns:
-        # CodiEsp stores codes lowercase (r52, bw03zzz); CMS index is uppercase
-        code_upper = ann.icd10_code.upper()
+        # CodiEsp stores codes lowercase with dots (r52.1); CMS index is uppercase without dots (R521)
+        code_upper = ann.icd10_code.upper().replace(".", "")
         is_diag   = ann.bio_type == "DIAG"
         descs     = cm_descs  if is_diag else pcs_descs
         all_codes = cm_codes  if is_diag else pcs_codes

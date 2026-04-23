@@ -165,11 +165,17 @@ class MedicalCodingPipeline:
         lines = []
         for r in results:
             label = "DIAGNOSTICO" if r["entity_type"] == "DIAG" else "PROCEDIMIENTO"
+            code = r["icd10_code"].lower()   # CodiEsp uses lowercase codes
+            
+            # CMS index stripped dots (e118), but CodiEsp requires them (e11.8)
+            if r["entity_type"] == "DIAG" and len(code) > 3 and "." not in code:
+                code = code[:3] + "." + code[3:]
+
             lines.append(
                 "\t".join([
                     article_id,
                     label,
-                    r["icd10_code"].lower(),   # CodiEsp uses lowercase codes
+                    code,
                     r["span_text"],
                     f"{r['start']} {r['end']}",
                 ])
