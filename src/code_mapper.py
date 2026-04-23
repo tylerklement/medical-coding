@@ -316,32 +316,14 @@ class CodeMapper:
             ]
             all_candidates.append(candidates)
 
-        # Step 3: Flatten ALL (query, description) pairs into one list
-        pair_list: List[Tuple[str, str]] = []
-        pair_map:  List[Tuple[int, int]] = []   # (span_idx, cand_idx)
-        for span_idx, (query, candidates) in enumerate(zip(queries, all_candidates)):
-            for cand_idx, (_, desc, _) in enumerate(candidates):
-                pair_list.append((query, desc))
-                pair_map.append((span_idx, cand_idx))
-
-        # Step 4: Score ALL pairs in one cross-encoder call
-        cross_scores_flat = (
-            self.cross_encoder.predict(pair_list, batch_size=128, show_progress_bar=False)
-            if pair_list else []
-        )
-
-        # Step 5: Scatter scores back by span and rerank
-        span_cand_scores: List[List[Tuple[int, float]]] = [[] for _ in spans]
-        for flat_idx, (span_idx, cand_idx) in enumerate(pair_map):
-            span_cand_scores[span_idx].append((cand_idx, float(cross_scores_flat[flat_idx])))
-
+        # Step 3: Bypass Cross-Encoder due to severe ontology mismatch
+        # US CMS descriptions and CIE-10 (CodiEsp) have suffix mismatches that
+        # caused true semantic matches to be treated as hard negatives during
+        # reranker training (e.g., E11 vs E11.9). The Bi-Encoder alone is safer.
         results = []
-        for span, candidates, cand_scores in zip(spans, all_candidates, span_cand_scores):
-            reranked = sorted(
-                [(candidates[ci][0], candidates[ci][1], cs) for ci, cs in cand_scores],
-                key=lambda x: x[2],
-                reverse=True,
-            )
+        for span, candidates in zip(spans, all_candidates):
+            # Sort by the bi-encoder's score (which is candidate[2])
+            reranked = sorted(candidates, key=lambda x: x[2], reverse=True)
             preds = [
                 {"code": code, "description": desc, "score": round(cs, 4)}
                 for code, desc, cs in reranked[:return_top_k]
