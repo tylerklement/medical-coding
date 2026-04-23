@@ -98,8 +98,8 @@ def parse_cm_descriptions(raw_bytes: bytes) -> dict:
         if len(parts) < 4:
             continue
         flag = parts[2]
-        if flag != "1":
-            continue   # '0' = header/non-billable category
+        # CodiEsp uses parent/category codes (like E78.0), whereas the US system
+        # considers these non-billable (flag '0'). We must keep ALL codes.
         code = parts[1]
         # The long description starts after the flag digit at col ~16
         # We grab everything from position 16 and collapse internal whitespace
@@ -160,33 +160,26 @@ def main():
     pcs_out = DATA_DIR / "icd10pcs_descriptions.json"
 
     # ── ICD-10-CM ─────────────────────────────────────────────────────────────
-    # Skip only if the file already has genuine content (> 10 KB)
-    if cm_out.exists() and cm_out.stat().st_size > 10_000:
-        print(f"ICD-10-CM already exists ({cm_out.stat().st_size / 1e3:.0f} KB), skipping.")
-    else:
-        raw = _download_bytes(ICD10_CM_URL)
-        cm_descs = parse_cm_descriptions(raw)
-        if not cm_descs:
-            print("ERROR: CM parser returned 0 codes. The URL or file format may have changed.")
-            sys.exit(1)
-        print(f"Parsed {len(cm_descs):,} ICD-10-CM codes")
-        with open(cm_out, "w", encoding="utf-8") as f:
-            json.dump(cm_descs, f, ensure_ascii=False, indent=2)
-        print(f"Saved → {cm_out}")
+    raw = _download_bytes(ICD10_CM_URL)
+    cm_descs = parse_cm_descriptions(raw)
+    if not cm_descs:
+        print("ERROR: CM parser returned 0 codes. The URL or file format may have changed.")
+        sys.exit(1)
+    print(f"Parsed {len(cm_descs):,} ICD-10-CM codes")
+    with open(cm_out, "w", encoding="utf-8") as f:
+        json.dump(cm_descs, f, ensure_ascii=False, indent=2)
+    print(f"Saved → {cm_out}")
 
     # ── ICD-10-PCS ────────────────────────────────────────────────────────────
-    if pcs_out.exists() and pcs_out.stat().st_size > 10_000:
-        print(f"ICD-10-PCS already exists ({pcs_out.stat().st_size / 1e3:.0f} KB), skipping.")
-    else:
-        raw = _download_bytes(ICD10_PCS_URL)
-        pcs_descs = parse_pcs_descriptions(raw)
-        if not pcs_descs:
-            print("ERROR: PCS parser returned 0 codes. The URL or file format may have changed.")
-            sys.exit(1)
-        print(f"Parsed {len(pcs_descs):,} ICD-10-PCS codes")
-        with open(pcs_out, "w", encoding="utf-8") as f:
-            json.dump(pcs_descs, f, ensure_ascii=False, indent=2)
-        print(f"Saved → {pcs_out}")
+    raw = _download_bytes(ICD10_PCS_URL)
+    pcs_descs = parse_pcs_descriptions(raw)
+    if not pcs_descs:
+        print("ERROR: PCS parser returned 0 codes. The URL or file format may have changed.")
+        sys.exit(1)
+    print(f"Parsed {len(pcs_descs):,} ICD-10-PCS codes")
+    with open(pcs_out, "w", encoding="utf-8") as f:
+        json.dump(pcs_descs, f, ensure_ascii=False, indent=2)
+    print(f"Saved → {pcs_out}")
 
     print("\n✅  ICD-10 index build complete.")
     print(f"   CM  codes : {len(json.load(open(cm_out))):,}")
