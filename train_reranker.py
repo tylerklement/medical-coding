@@ -70,14 +70,37 @@ def build_training_pairs(
     1. For each annotation, use the gold code description as the positive.
     2. Mine hard negatives using the bi-encoder's top-K retrievals
        (excluding the gold code).
+
+    Key optimization: descriptions are encoded ONCE per call (not once per
+    annotation), reducing encoding work from O(annotations x descriptions)
+    to O(annotations + descriptions).
     """
     anns = load_annotations(tsv_path)
+
+    # Pre-encode all descriptions once — the core optimization
+    print("  Pre-encoding CM  descriptions (once)...")
+    cm_codes = list(cm_descs.keys())
+    cm_texts = [cm_descs[c] for c in cm_codes]
+    cm_embs  = bi_encoder.encode(cm_texts, normalize_embeddings=True,
+                                 batch_size=512, show_progress_bar=True)
+
+    print("  Pre-encoding PCS descriptions (once)...")
+    pcs_codes = list(pcs_descs.keys())
+    pcs_texts = [pcs_descs[c] for c in pcs_codes]
+    pcs_embs  = bi_encoder.encode(pcs_texts, normalize_embeddings=True,
+                                  batch_size=512, show_progress_bar=True)
+
     all_examples: List[InputExample] = []
 
     for ann in anns:
-        descs = cm_descs if ann.bio_type == "DIAG" else pcs_descs
         # CodiEsp stores codes lowercase (r52, bw03zzz); CMS index is uppercase
         code_upper = ann.icd10_code.upper()
+        is_diag   = ann.bio_type == "DIAG"
+        descs     = cm_descs  if is_diag else pcs_descs
+        all_codes = cm_codes  if is_diag else pcs_codes
+        all_texts = cm_texts  if is_diag else pcs_texts
+        all_embs  = cm_embs   if is_diag else pcs_embs
+
         gold_desc = descs.get(code_upper)
         if not gold_desc:
             continue
@@ -89,20 +112,15 @@ def build_training_pairs(
         # Positive example
         all_examples.append(InputExample(texts=[span_text, gold_desc], label=1.0))
 
-        # Hard-negative mining via bi-encoder
-        all_desc_items = list(descs.items())
-        all_descs_text = [d for _, d in all_desc_items]
-        all_codes = [c for c, _ in all_desc_items]
-
-        span_emb = bi_encoder.encode([span_text], normalize_embeddings=True)
-        desc_embs = bi_encoder.encode(all_descs_text, normalize_embeddings=True, batch_size=256)
-        sims = (span_emb @ desc_embs.T)[0]
+        # Hard-negative mining: encode span once, dot-product vs pre-encoded descs
+        span_emb  = bi_encoder.encode([span_text], normalize_embeddings=True)
+        sims      = (span_emb @ all_embs.T)[0]
         top_k_idx = np.argsort(-sims)[:top_k_negatives]
 
         negatives = [
-            all_descs_text[i]
+            all_texts[i]
             for i in top_k_idx
-            if all_codes[i] != ann.icd10_code
+            if all_codes[i].upper() != code_upper
         ][:negatives_per_pos]
 
         for neg_desc in negatives:
@@ -110,6 +128,7 @@ def build_training_pairs(
 
     random.shuffle(all_examples)
     return all_examples
+
 
 
 def main():
