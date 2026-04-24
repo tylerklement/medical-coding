@@ -67,8 +67,17 @@ def _load_icd10_descriptions(json_path: str | Path) -> Tuple[List[str], List[str
         )
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    codes = list(data.keys())
-    descriptions = list(data.values())
+    
+    codes = []
+    descriptions = []
+    for code, desc_string in data.items():
+        # Our custom index joins synonyms with ' | ', we must flatten them
+        # so each synonym gets its own distinct FAISS vector.
+        synonyms = [s.strip() for s in desc_string.split(" | ")]
+        for syn in synonyms:
+            codes.append(code)
+            descriptions.append(syn)
+            
     return codes, descriptions
 
 
